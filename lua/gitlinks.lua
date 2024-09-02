@@ -1,52 +1,51 @@
 local M = {}
 
-local utils = require("gitlinks.utils")
-
-default_config = {
-  register = "+",
-  hotkey = "<leader>gl",
-  enable_hotkey = true,
+local default_keys = {
+  { "<leader>gl", mode = { "n", "v" }, "<cmd>GenerateGitLink<cr>" },
 }
 
-GitlinksConfig = GitlinksConfig or default_config
+M.config = {
+  opts = {
+    register = "+",
+    default_keymaps_enabled = true,
+  }
+}
 
-M.gitlinks = function(config)
-
+local web_repos = function()
+  local utils = require("gitlinks.utils")
+  return {
+    ["github"] = utils.generate_github_url,
+    ["bitbucket"] = utils.generate_bitbucket_url
+  }
 end
 
+M.generate_url = function()
+  local utils = require("gitlinks.utils")
 
-
-local web_repos = {
-  ["github"] = utils.generate_github_url,
-  ["bitbucket"] = utils.generate_bitbucket_url
-}
-
-local generate_url = function()
   local git_info = utils.get_git_info()
   if (web_repos[git_info.type]) then
     local link = web_repos[git_info.type](git_info)
-    vim.fn.setreg("+", link)
+    vim.fn.setreg(M.config.register, link)
   else
     error('Invalid Repo Type')
   end
 end
 
-vim.api.nvim_create_user_command("GenerateGitLink", generate_url,
+-- M.init = function()
+--   vim.api.nvim_create_user_command("GenerateGitLink", generate_url,
+--     { desc = "Generate a git link to view the current code line" })
+-- end
+vim.api.nvim_create_user_command("GenerateGitLink", M.generate_url,
   { desc = "Generate a git link to view the current code line" })
 
-
-M.setup = function(config)
-  if not config then
-    local config = default_config
+M.init = function(config)
+  if (config.opts.default_keymaps_enabled) then
+    M.config.keys = default_keys
   end
 
-  GitlinksConfig = config
-
-
-  vim.api.nvim_create_user_command("GenerateGitLink", generate_url,
+  vim.keymap.set({ "v", "n" }, "<Plug>(GenerateGitLink)", function() generate_url() end, { noremap = true })
+  vim.api.nvim_create_user_command("GenerateGitLink", M.generate_url,
     { desc = "Generate a git link to view the current code line" })
-
-  vim.keymap.set("n", "<Plug>(GenerateGitLink)", generate_url, { noremap = true })
 end
 
 
