@@ -21,7 +21,7 @@ This plugin has the following defaults that can be overridden using `opts=` in t
 return {
   dir = '~/code/Personal/nvim/git-links.nvim/',
   opts = {
-    hotkey = "<leader>gw",
+    hotkey = "<leader>gw", -- Set to "" to disable hotkey entirely
     register = "+",
   }
 }
