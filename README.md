@@ -9,7 +9,7 @@ With the contents:
 
 ```
 return {
-  dir = '~/code/Personal/nvim/git-links.nvim/',
+  "baroldgene/git-links.nvim",
   opts = {}
 }
 ```
@@ -19,7 +19,7 @@ return {
 This plugin has the following defaults that can be overridden using `opts=` in the initialization.  Here is the full spec:
 ```
 return {
-  dir = '~/code/Personal/nvim/git-links.nvim/',
+  "baroldgene/git-links.nvim",
   opts = {
     hotkey = "<leader>gw", -- Set to "" to disable hotkey entirely
     register = "+",
