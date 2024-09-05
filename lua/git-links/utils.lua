@@ -19,7 +19,8 @@ end
 
 local P = Utils.P
 local function clean_url(url)
-  url = string.gsub(url, "https?:\\/\\//", '')
+  url = string.gsub(url, "https?://", "")
+  url = string.gsub(url, "^origin%s+", "")
   url = string.gsub(url, "%(fetch%)", '')
   url = string.gsub(url, ".*@", '')
   url = string.gsub(url, ':', '/')
@@ -110,8 +111,6 @@ Utils.Get_Git_Info = function()
   run_steps()
 
   return Utils.data
-
-
 end
 
 
