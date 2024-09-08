@@ -15,21 +15,59 @@ local P = function(var)
   print(vim.inspect(var))
 end
 
-local function tbl_contains(state, arguments)
-  local expected = arguments[1]
-  return function(tbl)
-    P(tbl)
-    P(expected)
-    for index, value in ipairs(tbl) do
-      if value == expected then
-        return true
-      end
-    end
-  end
-end
 
-assert:register("matcher", "tbl_contains", tbl_contains)
 describe("git-links", function()
+  local original_system_cmd
+  local fail_functions = {
+    none = function(cmd)
+      if cmd[1] == "git" and cmd[2] == "remote" then
+        return { wait = function() return { code = 0, stdout = "origin\thttps://github.com/user/repo.git (fetch)" } end }
+      elseif cmd[1] == "git" and cmd[2] == "ls-files" then
+        return { wait = function() return { code = 0, stdout = "path/to/file.lua" } end }
+      elseif cmd[1] == "git" and cmd[2] == "rev-parse" then
+        return { wait = function() return { code = 0, stdout = "abcdef1" } end }
+      end
+    end,
+    ls_files = function(cmd)
+      if cmd[1] == "git" and cmd[2] == "remote" then
+        return { wait = function() return { code = 0, stdout = "origin\thttps://github.com/user/repo.git (fetch)" } end }
+      elseif cmd[1] == "git" and cmd[2] == "ls-files" then
+        return { wait = function() return { code = 1, stdout = "", stderr = "System Error" } end }
+      elseif cmd[1] == "git" and cmd[2] == "rev-parse" then
+        return { wait = function() return { code = 0, stdout = "abcdef1" } end }
+      end
+    end,
+    git_remote = function(cmd)
+      if cmd[1] == "git" and cmd[2] == "remote" then
+        return { wait = function() return { code = 1, stdout = "", stderr = "fatal: not a git repository" } end }
+      elseif cmd[1] == "git" and cmd[2] == "ls-files" then
+        return { wait = function() return { code = 0, stdout = "path/to/file.lua" } end }
+      elseif cmd[1] == "git" and cmd[2] == "rev-parse" then
+        return { wait = function() return { code = 0, stdout = "abcdef1" } end }
+      end
+    end,
+    rev_parse = function(cmd)
+      if cmd[1] == "git" and cmd[2] == "remote" then
+        return { wait = function() return { code = 0, stdout = "origin\thttps://github.com/user/repo.git (fetch)" } end }
+      elseif cmd[1] == "git" and cmd[2] == "ls-files" then
+        return { wait = function() return { code = 0, stdout = "path/to/file.lua" } end }
+      elseif cmd[1] == "git" and cmd[2] == "rev-parse" then
+        return { wait = function() return { code = 1, stdout = "", stderr = "fatal: not a git repository" } end }
+      end
+    end,
+    any = function(_)
+      return { wait = function() return { code = 1, stdout = "", stderr = "Some Error" } end }
+    end
+  }
+
+  before_each(function()
+    original_system_cmd = vim.system
+    stub(vim, "notify", function() return 0 end)
+  end)
+
+  after_each(function()
+    vim.system = original_system_cmd
+  end)
   it("Disables keymap when desired", function()
     local set_keymap = spy.on(vim.keymap, "set")
     require("git-links").setup({ hotkey = "" })
@@ -43,43 +81,88 @@ describe("git-links", function()
     assert.spy(set_keymap).was_called_with(match._, "<leader>gw", "<cmd>GenerateGitLink<cr>", match._)
   end)
 
-  -- TODO: Implement This
   it("Gets a proper github URL", function()
-    local revert_func = vim.sytem
-    vim.system = function(...)
-      local args = { ... }
-      print("Arg List:")
-      P(arg)
-      return revert_func(arg)
-    end
-    link = require("git-links").generate_url()
-    print("Link:")
-    print(link)
-    vim.system = revert_func
+    local gitlinks = require("git-links")
+    gitlinks.setup({})
 
+    vim.system = fail_functions.none
+    stub(vim.fn, "expand", function(arg)
+      if arg == "%:p:h" then return "/path/to/repo" end
+      if arg == "%:t" then return "file.lua" end
+    end)
+
+    stub(vim.fn, "line", function(arg)
+      if arg == "v" then return 10 end
+      if arg == "." then return 15 end
+    end)
+
+    stub(vim.fn, "setreg")
+
+    gitlinks.generate_url()
+
+    assert.stub(vim.fn.setreg).was_called_with("+", "https://github.com/user/repo/blob/abcdef1/path/to/file.lua#L10-L15")
+
+    vim.fn.expand:revert()
+    vim.fn.line:revert()
+    vim.fn.setreg:revert()
   end)
 
-  -- TODO: Implement This
-  it("Gets a proper bitbucket URL", function()
+  it("Handles error when git remote fails", function()
+    vim.system = fail_functions.git_remote
 
+    local gitlinks = require("git-links")
+    gitlinks.setup({})
+    gitlinks.generate_url()
+
+    assert.stub(vim.notify).was_called_with(match.has_match("Error attempting to Fetch Remote URL"), vim.log.levels
+      .ERROR, match._)
+
+    vim.notify:revert()
   end)
 
-  -- TODO: Implement This
-  it("Works when the root isn't the git root", function()
+  it("Handles error when git ls-files fails", function()
+    vim.system = fail_functions.ls_files
 
+    local gitlinks = require("git-links")
+    gitlinks.setup({})
+
+    gitlinks.generate_url()
+
+    assert.stub(vim.notify).was_called_with(match.has_match("Error attempting to Fetch File Info"), vim.log.levels.ERROR,
+      match._)
+
+    vim.notify:revert()
   end)
 
-  -- TODO: Implement This
-  it("Errors as expected when not a git repository", function()
+  it("Handles error when git rev-parse fails", function()
+    vim.system = fail_functions.rev_parse
+    local gitlinks = require("git-links")
 
+    gitlinks.setup({})
+    gitlinks.generate_url()
+
+    assert.stub(vim.notify).was_called(2) --  First call is the "loaded" notification
+    assert.stub(vim.notify).was_called_with(match.has_match("Error attempting to Fetch Hash"), vim.log.levels.ERROR,
+      match._
+    )
+
+    vim.notify:revert()
   end)
 
-  -- TODO: Implement This
-  it("Provides a useful error message", function()
-
-  end)
-
-  -- TODO: Implement This
   it("Stops execution on the first error", function()
+    local call_count = 0
+    vim.system = fail_functions.any
+
+    local gitlinks = require("git-links")
+    gitlinks.setup({})
+
+    gitlinks.generate_url()
+
+    assert.stub(vim.notify).was_called(2) -- First call is the "loaded" notification
+    assert.stub(vim.notify).was_called_with(match.has_match("Error attempting to Fetch Remote URL"),
+      vim.log.levels.ERROR, match._)
+
+    vim.notify:revert()
   end)
+
 end)

@@ -58,7 +58,7 @@ local function check_commit()
 end
 
 local function set_repo_type()
-  repo = Utils.data.url
+  local repo = Utils.data.url
   if (string.match(repo, "bitbucket")) then
     Utils.data.type = "bitbucket"
   elseif (string.match(repo, "github")) then
@@ -86,18 +86,27 @@ end
 
 local function fetch_file_info()
   local filename = vim.fn.expand('%:t')
-  local file_path = vim.system({ "git", "ls-files", "--full-name", filename }, { cwd = vim.fn.expand("%:p:h") }):wait()
-      .stdout
+  local exec = vim.system({ "git", "ls-files", "--full-name", filename }, { cwd = vim.fn.expand("%:p:h") }):wait()
 
-  file_path = string.gsub(file_path, "%s", "")
-
-  Utils.data.file_path = file_path
+  if (exec.code == 0) then
+    local file_path = exec.stdout
+    file_path = string.gsub(file_path, "%s", "")
+    Utils.data.file_path = file_path
+  else
+    error("File path not found")
+  end
 end
 
 local function fetch_hash()
-  local hash = vim.system({ "git", "rev-parse", "HEAD" }, { cwd = vim.fn.expand("%:p:h") }):wait().stdout
-  hash = string.gsub(hash, "%s+", "")
-  Utils.data.hash = hash
+  local exec = vim.system({ "git", "rev-parse", "HEAD" }, { cwd = vim.fn.expand("%:p:h") }):wait()
+  if (exec.code == 0) then
+    local hash = exec.stdout
+    hash = string.gsub(hash, "%s+", "")
+    Utils.data.hash = hash
+  else
+    error("Unable to determine commit hash")
+  end
+>>>>>>> f875ad0 (Refactored to have better tests)
 end
 
 local function get_line_number()
@@ -130,6 +139,7 @@ local function run_steps()
     end
   end
 end
+
 Utils.Get_Git_Info = function()
   Utils.data = {}
 
