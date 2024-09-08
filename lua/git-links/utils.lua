@@ -5,6 +5,10 @@ function Utils.notify(msg)
   vim.notify(msg_prefix .. msg, vim.log.levels.INFO, { title = 'Git-Links' })
 end
 
+function Utils.warn(msg)
+  vim.notify(msg_prefix .. msg, vim.log.levels.WARN, { title = 'Git-Links' })
+end
+
 function Utils.debug(msg)
   vim.notify(msg_prefix .. msg, vim.log.levels.DEBUG, { title = 'Git-Links' })
 end
@@ -27,6 +31,23 @@ local function clean_url(url)
   url = string.gsub(url, '%.git', '')
   url = string.gsub(url, "%s+", "")
   return url
+end
+
+local function check_branch_remote()
+  local branch = vim.fn.system("git rev-parse --abbrev-ref HEAD"):gsub("%s+", "")
+  local remote_branches = vim.fn.system("git branch -r"):gsub("%s+", "")
+  if not remote_branches:find("origin/" .. branch, 1, true) then
+    error("Branch " .. branch .. " does not exist on the remote.", 0)
+  end
+end
+
+local function check_commit()
+  local filename = vim.fn.expand('%:p')
+  local fileshort = vim.fn.expand('%:t')
+  local result = vim.fn.system("git status --porcelain " .. filename)
+  if result ~= "" then
+    Utils.warn("Warning: " .. fileshort .. " has uncommitted changes, url may not work as expected.")
+  end
 end
 
 local function set_repo_type()
@@ -88,11 +109,13 @@ local function will_fail()
 end
 
 Utils.Steps = {
-  { func = fetch_url,       name = "Fetch Remote URL" },
-  { func = fetch_hash,      name = "Fetch Hash" },
-  { func = set_repo_type,   name = "Detect Repo Type" },
-  { func = fetch_file_info, name = "Fetch File Info" },
-  { func = get_line_number, name = "Find Line Number" },
+  { func = check_branch_remote, name = "Check Branch Exists On Remote" },
+  { func = check_commit,        name = "Verify Commits" },
+  { func = fetch_url,           name = "Fetch Remote URL" },
+  { func = fetch_hash,          name = "Fetch Hash" },
+  { func = set_repo_type,       name = "Detect Repo Type" },
+  { func = fetch_file_info,     name = "Fetch File Info" },
+  { func = get_line_number,     name = "Find Line Number" },
 }
 
 local function run_steps()
