@@ -33,11 +33,10 @@ local function clean_url(url)
   return url
 end
 
-local function check_branch_remote()
-  local branch = vim.fn.system("git rev-parse --abbrev-ref HEAD"):gsub("%s+", "")
-  local remote_branches = vim.fn.system("git branch -r"):gsub("%s+", "")
-  if not remote_branches:find("origin/" .. branch, 1, true) then
-    error("Branch " .. branch .. " does not exist on the remote.", 0)
+local function check_sha_remote()
+  local result = vim.system({ "git", "fetch", "origin", Utils.data.hash }, { cwd = vim.fn.expand("%:p:h") }):wait()
+  if result.code ~= 0 then
+    error("Current commit does not exist on remote, unable to generate URL.", 0)
   end
 end
 
@@ -109,13 +108,13 @@ local function will_fail()
 end
 
 Utils.Steps = {
-  { func = check_branch_remote, name = "Check Branch Exists On Remote" },
-  { func = check_commit,        name = "Verify Commits" },
-  { func = fetch_url,           name = "Fetch Remote URL" },
-  { func = fetch_hash,          name = "Fetch Hash" },
-  { func = set_repo_type,       name = "Detect Repo Type" },
-  { func = fetch_file_info,     name = "Fetch File Info" },
-  { func = get_line_number,     name = "Find Line Number" },
+  { func = fetch_hash,       name = "Fetch Hash" },
+  { func = check_commit,     name = "Verify Commits" },
+  { func = check_sha_remote, name = "Find Remote Sha" },
+  { func = fetch_url,        name = "Fetch Remote URL" },
+  { func = set_repo_type,    name = "Detect Repo Type" },
+  { func = fetch_file_info,  name = "Fetch File Info" },
+  { func = get_line_number,  name = "Find Line Number" },
 }
 
 local function run_steps()
