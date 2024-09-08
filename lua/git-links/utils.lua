@@ -34,9 +34,16 @@ local function clean_url(url)
 end
 
 local function check_sha_remote()
-  local result = vim.system({ "git", "fetch", "origin", Utils.data.hash }, { cwd = vim.fn.expand("%:p:h") }):wait()
-  if result.code ~= 0 then
-    error("Current commit does not exist on remote, unable to generate URL.", 0)
+  local success, result = pcall(function()
+    return vim.system({ "git", "fetch", "origin", Utils.data.hash }, { cwd = vim.fn.expand("%:p:h") }):wait()
+  end)
+
+  if not success or result.code ~= 0 then
+    local branch_result = vim.system({ "git", "branch", "-r", "--contains", Utils.data.hash },
+      { cwd = vim.fn.expand("%:p:h") }):wait()
+    if branch_result.stdout == "" then
+      error("Current commit does not exist on remote branches.", 0)
+    end
   end
 end
 
