@@ -7,7 +7,7 @@ local find_map = function(maps, input)
 end
 
 local assert = require("luassert")
-local mock = require('luassert.mock')
+-- local mock = require('luassert.mock')
 local stub = require('luassert.stub')
 local match = require('luassert.match')
 local spy = require('luassert.spy')
@@ -15,6 +15,15 @@ local P = function(var)
   print(vim.inspect(var))
 end
 
+local base_function = function(cmd)
+  if cmd[1] == "git" and cmd[2] == "remote" then
+    return { wait = function() return { code = 0, stdout = "origin\thttps://github.com/user/repo.git (fetch)" } end }
+  elseif cmd[1] == "git" and cmd[2] == "ls-files" then
+    return { wait = function() return { code = 0, stdout = "path/to/file.lua" } end }
+  elseif cmd[1] == "git" and cmd[2] == "rev-parse" then
+    return { wait = function() return { code = 0, stdout = "abcdef1" } end }
+  end
+end
 
 describe("git-links", function()
   local original_system_cmd
@@ -22,79 +31,55 @@ describe("git-links", function()
     none_github = function(cmd)
       if cmd[1] == "git" and cmd[2] == "remote" then
         return { wait = function() return { code = 0, stdout = "origin\thttps://github.com/user/repo.git (fetch)" } end }
-      elseif cmd[1] == "git" and cmd[2] == "ls-files" then
-        return { wait = function() return { code = 0, stdout = "path/to/file.lua" } end }
-      elseif cmd[1] == "git" and cmd[2] == "rev-parse" then
-        return { wait = function() return { code = 0, stdout = "abcdef1" } end }
+      else
+        return base_function(cmd)
       end
     end,
     none_bitbucket = function(cmd)
       if cmd[1] == "git" and cmd[2] == "remote" then
         return { wait = function() return { code = 0, stdout = "origin\thttps://bitbucket.com/user/repo.git (fetch)" } end }
-      elseif cmd[1] == "git" and cmd[2] == "ls-files" then
-        return { wait = function() return { code = 0, stdout = "path/to/file.lua" } end }
-      elseif cmd[1] == "git" and cmd[2] == "rev-parse" then
-        return { wait = function() return { code = 0, stdout = "abcdef1" } end }
+      else
+        return base_function(cmd)
       end
     end,
     ls_files = function(cmd)
-      if cmd[1] == "git" and cmd[2] == "remote" then
-        return { wait = function() return { code = 0, stdout = "origin\thttps://github.com/user/repo.git (fetch)" } end }
-      elseif cmd[1] == "git" and cmd[2] == "ls-files" then
+      if cmd[1] == "git" and cmd[2] == "ls-files" then
         return { wait = function() return { code = 1, stdout = "", stderr = "System Error" } end }
-      elseif cmd[1] == "git" and cmd[2] == "rev-parse" then
-        return { wait = function() return { code = 0, stdout = "abcdef1" } end }
+      else
+        return base_function(cmd)
       end
     end,
     git_remote = function(cmd)
       if cmd[1] == "git" and cmd[2] == "remote" then
         return { wait = function() return { code = 1, stdout = "", stderr = "fatal: not a git repository" } end }
-      elseif cmd[1] == "git" and cmd[2] == "ls-files" then
-        return { wait = function() return { code = 0, stdout = "path/to/file.lua" } end }
-      elseif cmd[1] == "git" and cmd[2] == "rev-parse" then
-        return { wait = function() return { code = 0, stdout = "abcdef1" } end }
+      else
+        return base_function(cmd)
       end
     end,
     rev_parse = function(cmd)
-      if cmd[1] == "git" and cmd[2] == "remote" then
-        return { wait = function() return { code = 0, stdout = "origin\thttps://github.com/user/repo.git (fetch)" } end }
-      elseif cmd[1] == "git" and cmd[2] == "ls-files" then
-        return { wait = function() return { code = 0, stdout = "path/to/file.lua" } end }
-      elseif cmd[1] == "git" and cmd[2] == "rev-parse" then
+      if cmd[1] == "git" and cmd[2] == "rev-parse" then
         return { wait = function() return { code = 1, stdout = "", stderr = "fatal: not a git repository" } end }
+      else
+        return base_function(cmd)
       end
     end,
+    
     any = function(_)
       return { wait = function() return { code = 1, stdout = "", stderr = "Some Error" } end }
+    end,
+    no_remotes = function(cmd)
+      if cmd[1] == "git" and cmd[2] == "remote" then
+        return { wait = function() return { code = 0, stdout = "" } end }
+      else
+        return base_function(cmd)
+      end
     end
   }
 
   before_each(function()
     original_system_cmd = vim.system
     stub(vim, "notify", function() return 0 end)
-  end)
-
-  after_each(function()
-    vim.system = original_system_cmd
-  end)
-  it("Disables keymap when desired", function()
-    local set_keymap = spy.on(vim.keymap, "set")
-    require("git-links").setup({ hotkey = "" })
-    assert.spy(set_keymap).was_called(0)
-  end)
-
-  it("Has a default keymap", function()
-    local set_keymap = spy.on(vim.keymap, "set")
-    require("git-links").setup({})
-    assert.spy(set_keymap).was_called(1)
-    assert.spy(set_keymap).was_called_with(match._, "<leader>gw", "<cmd>GenerateGitLink<cr>", match._)
-  end)
-
-  it("Gets a proper github URL", function()
-    local gitlinks = require("git-links")
-    gitlinks.setup({})
-
-    vim.system = fail_functions.none_github
+    stub(vim.fn, "setreg")
     stub(vim.fn, "expand", function(arg)
       if arg == "%:p:h" then return "/path/to/repo" end
       if arg == "%:t" then return "file.lua" end
@@ -104,16 +89,45 @@ describe("git-links", function()
       if arg == "v" then return 10 end
       if arg == "." then return 15 end
     end)
+  end)
 
-    stub(vim.fn, "setreg")
+  after_each(function()
+    vim.system = original_system_cmd
+    vim.fn.expand:revert()
+    vim.fn.line:revert()
+    vim.fn.setreg:revert()
+  end)
+  it("Sets a default keymap", function()
+    stub(vim.keymap, "set")
+    require("git-links").setup({})
+    assert.stub(vim.keymap.set).was_called(1)
+    assert.stub(vim.keymap.set).was_called_with(match._, "<leader>gw", "<cmd>GenerateGitLink<cr>", match._)
+    vim.keymap.set:revert()
+  end)
+  it("Disables keymap when desired", function()
+    stub(vim.keymap, "set")
+    require("git-links").setup({ hotkey = "" })
+    assert.stub(vim.keymap.set).was_called(0)
+    vim.keymap.set:revert()
+  end)
+
+  it("Can use a different register", function()
+    local gitlinks = require("git-links")
+    gitlinks.setup({ register = "1" })
+    vim.system = fail_functions.none_github
+    gitlinks.generate_url()
+    assert.stub(vim.fn.setreg).was_called_with("1", "https://github.com/user/repo/blob/abcdef1/path/to/file.lua#L10-L15")
+  end)
+
+  it("Gets a proper github URL", function()
+    local gitlinks = require("git-links")
+    gitlinks.setup({})
+    vim.system = fail_functions.none_github
 
     gitlinks.generate_url()
 
     assert.stub(vim.fn.setreg).was_called_with("+", "https://github.com/user/repo/blob/abcdef1/path/to/file.lua#L10-L15")
 
-    vim.fn.expand:revert()
-    vim.fn.line:revert()
-    vim.fn.setreg:revert()
   end)
 
   it("Gets a proper bitbucket URL", function()
@@ -121,26 +135,24 @@ describe("git-links", function()
     gitlinks.setup({})
 
     vim.system = fail_functions.none_bitbucket
-    stub(vim.fn, "expand", function(arg)
-      if arg == "%:p:h" then return "/path/to/repo" end
-      if arg == "%:t" then return "file.lua" end
-    end)
-
-    stub(vim.fn, "line", function(arg)
-      if arg == "v" then return 10 end
-      if arg == "." then return 15 end
-    end)
-
-    stub(vim.fn, "setreg")
 
     gitlinks.generate_url()
 
     assert.stub(vim.fn.setreg).was_called_with("+",
       "https://bitbucket.com/user/repo/src/abcdef1/path/to/file.lua#lines-10:15")
 
-    vim.fn.expand:revert()
-    vim.fn.line:revert()
-    vim.fn.setreg:revert()
+  end)
+  it("Fails gracefully when no acceptable remote is found", function()
+    local gitlinks = require("git-links")
+    gitlinks.setup({})
+
+    vim.system = fail_functions.no_remotes
+
+
+    gitlinks.generate_url()
+
+    assert.stub(vim.notify).was_called_with(match.has_match("Error attempting to Fetch Remote URL"), vim.log.levels
+      .ERROR, match._)
   end)
   it("Handles error when git remote fails", function()
     vim.system = fail_functions.git_remote
