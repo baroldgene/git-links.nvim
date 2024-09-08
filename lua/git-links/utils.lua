@@ -82,11 +82,6 @@ end
 
 Utils.data = {}
 
-local function will_fail()
-  val = vim.system({ "foo" }):wait().stdout
-  return val
-end
-
 Utils.Steps = {
   { func = fetch_url,       name = "Fetch Remote URL" },
   { func = fetch_hash,      name = "Fetch Hash" },
