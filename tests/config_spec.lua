@@ -114,6 +114,27 @@ describe("git-links", function()
     assert.stub(vim.fn.setreg).was_called_with("1", "https://github.com/user/repo/blob/abcdef1/path/to/file.lua#L10-L15")
   end)
 
+  it("Handles multi-line input", function()
+    local gitlinks = require("git-links")
+    require("git-links").setup({})
+    vim.system = fail_functions.none_github
+
+    gitlinks.generate_url()
+    assert.stub(vim.fn.setreg).was_called_with("+", "https://github.com/user/repo/blob/abcdef1/path/to/file.lua#L10-L15")
+  end)
+
+  it("Handles single-line input", function()
+    local gitlinks = require("git-links")
+    require("git-links").setup({})
+    stub(vim.fn, "line", function(arg)
+      return 10
+    end)
+    vim.system = fail_functions.none_github
+
+    gitlinks.generate_url()
+    assert.stub(vim.fn.setreg).was_called_with("+", "https://github.com/user/repo/blob/abcdef1/path/to/file.lua#L10")
+    vim.fn.line:revert()
+  end)
   it("Gets a proper github URL", function()
     local gitlinks = require("git-links")
     gitlinks.setup({})
