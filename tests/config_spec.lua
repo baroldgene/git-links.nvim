@@ -19,9 +19,18 @@ end
 describe("git-links", function()
   local original_system_cmd
   local fail_functions = {
-    none = function(cmd)
+    none_github = function(cmd)
       if cmd[1] == "git" and cmd[2] == "remote" then
         return { wait = function() return { code = 0, stdout = "origin\thttps://github.com/user/repo.git (fetch)" } end }
+      elseif cmd[1] == "git" and cmd[2] == "ls-files" then
+        return { wait = function() return { code = 0, stdout = "path/to/file.lua" } end }
+      elseif cmd[1] == "git" and cmd[2] == "rev-parse" then
+        return { wait = function() return { code = 0, stdout = "abcdef1" } end }
+      end
+    end,
+    none_bitbucket = function(cmd)
+      if cmd[1] == "git" and cmd[2] == "remote" then
+        return { wait = function() return { code = 0, stdout = "origin\thttps://bitbucket.com/user/repo.git (fetch)" } end }
       elseif cmd[1] == "git" and cmd[2] == "ls-files" then
         return { wait = function() return { code = 0, stdout = "path/to/file.lua" } end }
       elseif cmd[1] == "git" and cmd[2] == "rev-parse" then
@@ -85,7 +94,7 @@ describe("git-links", function()
     local gitlinks = require("git-links")
     gitlinks.setup({})
 
-    vim.system = fail_functions.none
+    vim.system = fail_functions.none_github
     stub(vim.fn, "expand", function(arg)
       if arg == "%:p:h" then return "/path/to/repo" end
       if arg == "%:t" then return "file.lua" end
@@ -107,6 +116,32 @@ describe("git-links", function()
     vim.fn.setreg:revert()
   end)
 
+  it("Gets a proper bitbucket URL", function()
+    local gitlinks = require("git-links")
+    gitlinks.setup({})
+
+    vim.system = fail_functions.none_bitbucket
+    stub(vim.fn, "expand", function(arg)
+      if arg == "%:p:h" then return "/path/to/repo" end
+      if arg == "%:t" then return "file.lua" end
+    end)
+
+    stub(vim.fn, "line", function(arg)
+      if arg == "v" then return 10 end
+      if arg == "." then return 15 end
+    end)
+
+    stub(vim.fn, "setreg")
+
+    gitlinks.generate_url()
+
+    assert.stub(vim.fn.setreg).was_called_with("+",
+      "https://bitbucket.com/user/repo/src/abcdef1/path/to/file.lua#lines-10:15")
+
+    vim.fn.expand:revert()
+    vim.fn.line:revert()
+    vim.fn.setreg:revert()
+  end)
   it("Handles error when git remote fails", function()
     vim.system = fail_functions.git_remote
 
