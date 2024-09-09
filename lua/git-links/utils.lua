@@ -111,8 +111,6 @@ end
 local function get_line_number()
   local starts = vim.fn.line("v")
   local ends = vim.fn.line(".")
-  -- data.linenumber = vim.api.nvim_win_get_cursor()[1]
-  -- linenumber = vim.api.nvim_win_get_cursor()[1]
   Utils.data.linenumber = { starts = starts, ends = ends }
 end
 
