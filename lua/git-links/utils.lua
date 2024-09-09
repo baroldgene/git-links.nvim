@@ -34,15 +34,16 @@ local function clean_url(url)
 end
 
 local function check_sha_remote()
-  local success, result = pcall(function()
-    return vim.system({ "git", "fetch", "origin", Utils.data.hash }, { cwd = vim.fn.expand("%:p:h") }):wait()
-  end)
+  local branch_result = vim.system({ "git", "branch", "-r", "--contains", Utils.data.hash },
+    { cwd = vim.fn.expand("%:p:h") }):wait()
 
-  if not success or result.code ~= 0 then
-    local branch_result = vim.system({ "git", "branch", "-r", "--contains", Utils.data.hash },
-      { cwd = vim.fn.expand("%:p:h") }):wait()
-    if branch_result.stdout == "" then
-      error("Current commit does not exist on remote branches.", 0)
+  if branch_result.stdout == "" then
+    local success, result = pcall(function()
+      return vim.system({ "git", "fetch", "origin", Utils.data.hash }, { cwd = vim.fn.expand("%:p:h") }):wait()
+    end)
+
+    if not success or result.code ~= 0 then
+      error("Current commit does not exist on remote.", 0)
     end
   end
 end
@@ -94,7 +95,7 @@ local function fetch_file_info()
 end
 
 local function fetch_hash()
-  local hash = vim.system({ "git", "rev-parse", "--short", "HEAD" }, { cwd = vim.fn.expand("%:p:h") }):wait().stdout
+  local hash = vim.system({ "git", "rev-parse", "HEAD" }, { cwd = vim.fn.expand("%:p:h") }):wait().stdout
   hash = string.gsub(hash, "%s+", "")
   Utils.data.hash = hash
 end
