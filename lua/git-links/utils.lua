@@ -5,6 +5,10 @@ function Utils.notify(msg)
   vim.notify(msg_prefix .. msg, vim.log.levels.INFO, { title = 'Git-Links' })
 end
 
+function Utils.warn(msg)
+  vim.notify(msg_prefix .. msg, vim.log.levels.WARN, { title = 'Git-Links' })
+end
+
 function Utils.debug(msg)
   vim.notify(msg_prefix .. msg, vim.log.levels.DEBUG, { title = 'Git-Links' })
 end
@@ -27,6 +31,30 @@ local function clean_url(url)
   url = string.gsub(url, '%.git', '')
   url = string.gsub(url, "%s+", "")
   return url
+end
+
+local function check_sha_remote()
+  local branch_result = vim.system({ "git", "branch", "-r", "--contains", Utils.data.hash },
+    { cwd = vim.fn.expand("%:p:h") }):wait()
+
+  if branch_result.stdout == "" then
+    local success, result = pcall(function()
+      return vim.system({ "git", "fetch", "origin", Utils.data.hash }, { cwd = vim.fn.expand("%:p:h") }):wait()
+    end)
+
+    if not success or result.code ~= 0 then
+      error("Current commit does not exist on remote.", 0)
+    end
+  end
+end
+
+local function check_commit()
+  local filename = vim.fn.expand('%:p')
+  local fileshort = vim.fn.expand('%:t')
+  local result = vim.fn.system("git status --porcelain " .. filename)
+  if result ~= "" then
+    Utils.warn("Warning: " .. fileshort .. " has uncommitted changes, url may not work as expected.")
+  end
 end
 
 local function set_repo_type()
@@ -67,7 +95,7 @@ local function fetch_file_info()
 end
 
 local function fetch_hash()
-  local hash = vim.system({ "git", "rev-parse", "--short", "HEAD" }, { cwd = vim.fn.expand("%:p:h") }):wait().stdout
+  local hash = vim.system({ "git", "rev-parse", "HEAD" }, { cwd = vim.fn.expand("%:p:h") }):wait().stdout
   hash = string.gsub(hash, "%s+", "")
   Utils.data.hash = hash
 end
@@ -83,11 +111,13 @@ end
 Utils.data = {}
 
 Utils.Steps = {
-  { func = fetch_url,       name = "Fetch Remote URL" },
-  { func = fetch_hash,      name = "Fetch Hash" },
-  { func = set_repo_type,   name = "Detect Repo Type" },
-  { func = fetch_file_info, name = "Fetch File Info" },
-  { func = get_line_number, name = "Find Line Number" },
+  { func = fetch_hash,       name = "Fetch Hash" },
+  { func = check_commit,     name = "Verify Commits" },
+  { func = check_sha_remote, name = "Find Remote Sha" },
+  { func = fetch_url,        name = "Fetch Remote URL" },
+  { func = set_repo_type,    name = "Detect Repo Type" },
+  { func = fetch_file_info,  name = "Fetch File Info" },
+  { func = get_line_number,  name = "Find Line Number" },
 }
 
 local function run_steps()
