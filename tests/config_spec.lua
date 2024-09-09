@@ -1,63 +1,222 @@
-local find_map = function(maps, input)
-  for _, map in ipairs(maps) do
-    if (map.lhs == input or map.rhs == input) then
-      return map
-    end
-  end
-end
-
+local assert = require("luassert")
+local stub = require('luassert.stub')
+local match = require('luassert.match')
+-- local mock = require('luassert.mock')
 local P = function(var)
   print(vim.inspect(var))
 end
 
+local base_function = function(cmd)
+  if cmd[1] == "git" and cmd[2] == "remote" then
+    return { wait = function() return { code = 0, stdout = "origin\thttps://github.com/user/repo.git (fetch)" } end }
+  elseif cmd[1] == "git" and cmd[2] == "ls-files" then
+    return { wait = function() return { code = 0, stdout = "path/to/file.lua" } end }
+  elseif cmd[1] == "git" and cmd[2] == "rev-parse" then
+    return { wait = function() return { code = 0, stdout = "abcdef1" } end }
+  elseif cmd[1] == "git" and cmd[2] == "status" then
+    return { wait = function() return { code = 0, stdout = "" } end }
+  elseif cmd[1] == "git" and cmd[2] == "branch" then
+    return { wait = function() return { code = 0, stdout = "foo" } end }
+  elseif cmd[1] == "git" and cmd[2] == "fetch" then
+    return { wait = function() return { code = 0, stdout = "foo" } end }
+  end
+end
+
 describe("git-links", function()
-  it("Disables keymap when desired", function()
-    require("git-links").setup({ hotkey = "" })
-    local maps = vim.api.nvim_get_keymap("n")
-    local found = find_map(maps, "<Cmd>GenerateGitLink<CR>")
-
-    if (found ~= nil) then
-      P(found)
+  local original_system_cmd
+  local fail_functions = {
+    none_github = function(cmd)
+      if cmd[1] == "git" and cmd[2] == "remote" then
+        return { wait = function() return { code = 0, stdout = "origin\thttps://github.com/user/repo.git (fetch)" } end }
+      else
+        return base_function(cmd)
+      end
+    end,
+    none_bitbucket = function(cmd)
+      if cmd[1] == "git" and cmd[2] == "remote" then
+        return { wait = function() return { code = 0, stdout = "origin\thttps://bitbucket.com/user/repo.git (fetch)" } end }
+      else
+        return base_function(cmd)
+      end
+    end,
+    ls_files = function(cmd)
+      if cmd[1] == "git" and cmd[2] == "ls-files" then
+        return { wait = function() return { code = 1, stdout = "", stderr = "System Error" } end }
+      else
+        return base_function(cmd)
+      end
+    end,
+    git_remote = function(cmd)
+      if cmd[1] == "git" and cmd[2] == "remote" then
+        return { wait = function() return { code = 1, stdout = "", stderr = "fatal: not a git repository" } end }
+      else
+        return base_function(cmd)
+      end
+    end,
+    rev_parse = function(cmd)
+      if cmd[1] == "git" and cmd[2] == "rev-parse" then
+        return { wait = function() return { code = 1, stdout = "", stderr = "fatal: not a git repository" } end }
+      else
+        return base_function(cmd)
+      end
+    end,
+    
+    any = function(_)
+      return { wait = function() return { code = 1, stdout = "", stderr = "Some Error" } end }
+    end,
+    no_remotes = function(cmd)
+      if cmd[1] == "git" and cmd[2] == "remote" then
+        return { wait = function() return { code = 0, stdout = "" } end }
+      else
+        return base_function(cmd)
+      end
     end
+  }
 
-    assert.is_true(found == nil)
+  before_each(function()
+    original_system_cmd = vim.system
+    stub(vim, "notify", function(msg)
+      P(msg)
+      return 0
+    end)
+    stub(vim.fn, "setreg")
+    stub(vim.fn, "expand", function(arg)
+      if arg == "%:p:h" then return "/path/to/repo" end
+      if arg == "%:p" then return "/path/to/repo" end
+      if arg == "%:t" then return "file.lua" end
+    end)
+
+    stub(vim.fn, "line", function(arg)
+      if arg == "v" then return 10 end
+      if arg == "." then return 15 end
+    end)
   end)
 
-  it("Has a default keymap", function()
+  after_each(function()
+    vim.system = original_system_cmd
+    vim.fn.expand:revert()
+    vim.fn.line:revert()
+    vim.fn.setreg:revert()
+    vim.notify:revert()
+  end)
+
+  it("Sets a default keymap", function()
+    stub(vim.keymap, "set")
     require("git-links").setup({})
-    vim.g.mapleader = " "
-    local maps = vim.api.nvim_get_keymap("n")
-    local found = find_map(maps, "<Cmd>GenerateGitLink<CR>")
-
-    assert.is_false(found == nil)
+    assert.stub(vim.keymap.set).was_called(1)
+    assert.stub(vim.keymap.set).was_called_with(match._, "<leader>gw", "<cmd>GenerateGitLink<cr>", match._)
+    vim.keymap.set:revert()
   end)
 
-  -- TODO: Implement This
+  it("Disables keymap when desired", function()
+    stub(vim.keymap, "set")
+    require("git-links").setup({ hotkey = "" })
+    assert.stub(vim.keymap.set).was_called(0)
+    vim.keymap.set:revert()
+  end)
+
+  it("Can use a different register", function()
+    local gitlinks = require("git-links")
+    gitlinks.setup({ register = "1" })
+    vim.system = fail_functions.none_github
+
+    gitlinks.generate_url()
+    assert.stub(vim.fn.setreg).was_called_with("1", "https://github.com/user/repo/blob/abcdef1/path/to/file.lua#L10-L15")
+  end)
+
+  it("Handles multi-line input", function()
+    local gitlinks = require("git-links")
+    require("git-links").setup({})
+    vim.system = fail_functions.none_github
+
+    gitlinks.generate_url()
+    assert.stub(vim.fn.setreg).was_called_with("+", "https://github.com/user/repo/blob/abcdef1/path/to/file.lua#L10-L15")
+  end)
+
+  it("Handles single-line input", function()
+    local gitlinks = require("git-links")
+    require("git-links").setup({})
+    stub(vim.fn, "line", function(arg)
+      return 10
+    end)
+    vim.system = fail_functions.none_github
+
+    gitlinks.generate_url()
+    assert.stub(vim.fn.setreg).was_called_with("+", "https://github.com/user/repo/blob/abcdef1/path/to/file.lua#L10")
+    vim.fn.line:revert()
+  end)
   it("Gets a proper github URL", function()
+    local gitlinks = require("git-links")
+    gitlinks.setup({})
+    vim.system = fail_functions.none_github
 
+    gitlinks.generate_url()
+    assert.stub(vim.fn.setreg).was_called_with("+", "https://github.com/user/repo/blob/abcdef1/path/to/file.lua#L10-L15")
   end)
 
-  -- TODO: Implement This
   it("Gets a proper bitbucket URL", function()
+    vim.system = fail_functions.none_bitbucket
+    local gitlinks = require("git-links")
+    gitlinks.setup({})
+
+    gitlinks.generate_url()
+    assert.stub(vim.fn.setreg).was_called_with("+",
+      "https://bitbucket.com/user/repo/src/abcdef1/path/to/file.lua#lines-10:15")
 
   end)
 
-  -- TODO: Implement This
-  it("Works when the root isn't the git root", function()
+  it("Fails gracefully when no acceptable remote is found", function()
+    vim.system = fail_functions.no_remotes
+    local gitlinks = require("git-links")
+    gitlinks.setup({})
 
+    gitlinks.generate_url()
+    assert.stub(vim.notify).was_called_with(match.has_match("Error attempting to Fetch Remote URL"), vim.log.levels
+      .ERROR, match._)
   end)
 
-  -- TODO: Implement This
-  it("Errors as expected when not a git repository", function()
+  it("Handles error when git remote fails", function()
+    vim.system = fail_functions.git_remote
+    local gitlinks = require("git-links")
+    gitlinks.setup({})
 
+    gitlinks.generate_url()
+    assert.stub(vim.notify).was_called_with(match.has_match("Error attempting to Fetch Remote URL"), vim.log.levels
+      .ERROR, match._)
   end)
 
-  -- TODO: Implement This
-  it("Provides a useful error message", function()
+  it("Handles error when git ls-files fails", function()
+    vim.system = fail_functions.ls_files
+    local gitlinks = require("git-links")
+    gitlinks.setup({})
 
+    gitlinks.generate_url()
+    assert.stub(vim.notify).was_called_with(match.has_match("Error attempting to Fetch File Info"), vim.log.levels.ERROR,
+      match._)
   end)
 
-  -- TODO: Implement This
+  it("Handles error when git rev-parse fails", function()
+    vim.system = fail_functions.rev_parse
+    local gitlinks = require("git-links")
+    gitlinks.setup({})
+
+    gitlinks.generate_url()
+    assert.stub(vim.notify).was_called(2) --  First call is the "loaded" notification
+    assert.stub(vim.notify).was_called_with(match.has_match("Error attempting to Fetch Hash"), vim.log.levels.ERROR,
+      match._
+    )
+  end)
+
   it("Stops execution on the first error", function()
+    local call_count = 0
+    vim.system = fail_functions.any
+    local gitlinks = require("git-links")
+    gitlinks.setup({})
+
+    gitlinks.generate_url()
+    assert.stub(vim.notify).was_called(2) -- First call is the "loaded" notification
+    assert.stub(vim.notify).was_called_with(match.has_match("Error attempting to Fetch Hash"),
+      vim.log.levels.ERROR, match._)
   end)
+
 end)
