@@ -13,6 +13,12 @@ local base_function = function(cmd)
     return { wait = function() return { code = 0, stdout = "path/to/file.lua" } end }
   elseif cmd[1] == "git" and cmd[2] == "rev-parse" then
     return { wait = function() return { code = 0, stdout = "abcdef1" } end }
+  elseif cmd[1] == "git" and cmd[2] == "status" then
+    return { wait = function() return { code = 0, stdout = "" } end }
+  elseif cmd[1] == "git" and cmd[2] == "branch" then
+    return { wait = function() return { code = 0, stdout = "foo" } end }
+  elseif cmd[1] == "git" and cmd[2] == "fetch" then
+    return { wait = function() return { code = 0, stdout = "foo" } end }
   end
 end
 
@@ -69,10 +75,14 @@ describe("git-links", function()
 
   before_each(function()
     original_system_cmd = vim.system
-    stub(vim, "notify", function() return 0 end)
+    stub(vim, "notify", function(msg)
+      P(msg)
+      return 0
+    end)
     stub(vim.fn, "setreg")
     stub(vim.fn, "expand", function(arg)
       if arg == "%:p:h" then return "/path/to/repo" end
+      if arg == "%:p" then return "/path/to/repo" end
       if arg == "%:t" then return "file.lua" end
     end)
 
@@ -205,7 +215,7 @@ describe("git-links", function()
 
     gitlinks.generate_url()
     assert.stub(vim.notify).was_called(2) -- First call is the "loaded" notification
-    assert.stub(vim.notify).was_called_with(match.has_match("Error attempting to Fetch Remote URL"),
+    assert.stub(vim.notify).was_called_with(match.has_match("Error attempting to Fetch Hash"),
       vim.log.levels.ERROR, match._)
   end)
 

@@ -51,8 +51,8 @@ end
 local function check_commit()
   local filename = vim.fn.expand('%:p')
   local fileshort = vim.fn.expand('%:t')
-  local result = vim.fn.system("git status --porcelain " .. filename)
-  if result ~= "" then
+  local result = vim.system({ "git", "status", "--porcelain ", filename }, { cwd = vim.fn.expand("%:p:h") })
+  if result.stdout ~= "" then
     Utils.warn("Warning: " .. fileshort .. " has uncommitted changes, url may not work as expected.")
   end
 end
@@ -106,7 +106,6 @@ local function fetch_hash()
   else
     error("Unable to determine commit hash")
   end
->>>>>>> f875ad0 (Refactored to have better tests)
 end
 
 local function get_line_number()
