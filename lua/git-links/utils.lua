@@ -51,7 +51,7 @@ end
 local function check_commit()
   local filename = vim.fn.expand('%:p')
   local fileshort = vim.fn.expand('%:t')
-  local result = vim.system({ "git", "status", "--porcelain ", filename }, { cwd = vim.fn.expand("%:p:h") })
+  local result = vim.system({ "git", "status", "--porcelain ", fileshort }, { cwd = vim.fn.expand("%:p:h") }):wait()
   if result.stdout ~= "" then
     Utils.warn("Warning: " .. fileshort .. " has uncommitted changes, url may not work as expected.")
   end
