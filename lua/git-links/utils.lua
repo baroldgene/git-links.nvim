@@ -1,20 +1,20 @@
 Utils = {}
-local msg_prefix = 'Git-Links: '
+local msg_prefix = "Git-Links: "
 
 function Utils.notify(msg)
-  vim.notify(msg_prefix .. msg, vim.log.levels.INFO, { title = 'Git-Links' })
+  vim.notify(msg_prefix .. msg, vim.log.levels.INFO, { title = "Git-Links" })
 end
 
 function Utils.warn(msg)
-  vim.notify(msg_prefix .. msg, vim.log.levels.WARN, { title = 'Git-Links' })
+  vim.notify(msg_prefix .. msg, vim.log.levels.WARN, { title = "Git-Links" })
 end
 
 function Utils.debug(msg)
-  vim.notify(msg_prefix .. msg, vim.log.levels.DEBUG, { title = 'Git-Links' })
+  vim.notify(msg_prefix .. msg, vim.log.levels.DEBUG, { title = "Git-Links" })
 end
 
 function Utils.error(msg)
-  vim.notify(msg_prefix .. msg, vim.log.levels.ERROR, { title = 'Git-Links' })
+  vim.notify(msg_prefix .. msg, vim.log.levels.ERROR, { title = "Git-Links" })
 end
 
 function Utils.P(val)
@@ -25,10 +25,10 @@ local P = Utils.P
 local function clean_url(url)
   url = string.gsub(url, "https?://", "")
   url = string.gsub(url, "^origin%s+", "")
-  url = string.gsub(url, "%(fetch%)", '')
-  url = string.gsub(url, ".*@", '')
-  url = string.gsub(url, ':', '/')
-  url = string.gsub(url, '%.git', '')
+  url = string.gsub(url, "%(fetch%)", "")
+  url = string.gsub(url, ".*@", "")
+  url = string.gsub(url, ":", "/")
+  url = string.gsub(url, "%.git", "")
   url = string.gsub(url, "%s+", "")
   return url
 end
@@ -39,12 +39,19 @@ local function parse_remote_name(url)
   return name
 end
 local function check_sha_remote()
-  local branch_result = vim.system({ "git", "branch", "-r", "--contains", Utils.data.hash },
-    { cwd = vim.fn.expand("%:p:h") }):wait()
+  local branch_result = vim.system(
+        { "git", "branch", "-r", "--contains", Utils.data.hash },
+        { cwd = vim.fn.expand("%:p:h") }
+      )
+      :wait()
 
   if branch_result.stdout == "" then
     local success, result = pcall(function()
-      return vim.system({ "git", "fetch", "origin", Utils.data.hash }, { cwd = vim.fn.expand("%:p:h") }):wait()
+      return vim.system(
+            { "git", "fetch", Utils.data.remote_name, Utils.data.hash },
+            { cwd = vim.fn.expand("%:p:h") }
+          )
+          :wait()
     end)
 
     if not success or result.code ~= 0 then
@@ -54,9 +61,11 @@ local function check_sha_remote()
 end
 
 local function check_commit()
-  local filename = vim.fn.expand('%:p')
-  local fileshort = vim.fn.expand('%:t')
-  local result = vim.system({ "git", "status", "--porcelain ", fileshort }, { cwd = vim.fn.expand("%:p:h") }):wait()
+  local fileshort = vim.fn.expand("%:t")
+  local result = vim.system({ "git", "status", "--porcelain", fileshort }, { cwd = vim.fn.expand("%:p:h") }):wait()
+  if result.code ~= 0 then
+    error("Error checking git status: " .. result.stderr, 0)
+  end
   if result.stdout ~= "" then
     Utils.warn("Warning: " .. fileshort .. " has uncommitted changes, url may not work as expected.")
   end
@@ -64,9 +73,9 @@ end
 
 local function set_repo_type()
   local repo = Utils.data.url
-  if (string.match(repo, "bitbucket")) then
+  if string.match(repo, "bitbucket") then
     Utils.data.type = "bitbucket"
-  elseif (string.match(repo, "github")) then
+  elseif string.match(repo, "github") then
     Utils.data.type = "github"
   else
     error("Failed to detect repo type", 0)
@@ -91,10 +100,10 @@ local function fetch_url()
 end
 
 local function fetch_file_info()
-  local filename = vim.fn.expand('%:t')
+  local filename = vim.fn.expand("%:t")
   local exec = vim.system({ "git", "ls-files", "--full-name", filename }, { cwd = vim.fn.expand("%:p:h") }):wait()
 
-  if (exec.code == 0) then
+  if exec.code == 0 then
     local file_path = exec.stdout
     file_path = string.gsub(file_path, "%s", "")
     Utils.data.file_path = file_path
@@ -105,7 +114,7 @@ end
 
 local function fetch_hash()
   local exec = vim.system({ "git", "rev-parse", "HEAD" }, { cwd = vim.fn.expand("%:p:h") }):wait()
-  if (exec.code == 0) then
+  if exec.code == 0 then
     local hash = exec.stdout
     hash = string.gsub(hash, "%s+", "")
     Utils.data.hash = hash
@@ -135,7 +144,7 @@ Utils.Steps = {
 local function run_steps()
   for _, f in ipairs(Utils.Steps) do
     local val, err = pcall(f.func)
-    if (not val) then
+    if not val then
       Utils.data.errors = { step = f.name, message = err }
       Utils.error("Error attempting to " .. f.name .. ": " .. err)
       return
@@ -151,15 +160,14 @@ Utils.Get_Git_Info = function()
   return Utils.data
 end
 
-
 Utils.generate_bitbucket_url = function(git_info)
   local url = {
-    'https://' .. git_info.url,
-    '/src/' .. git_info.hash,
-    '/' .. git_info.file_path,
-    "#lines-" .. git_info.linenumber.starts
+    "https://" .. git_info.url,
+    "/src/" .. git_info.hash,
+    "/" .. git_info.file_path,
+    "#lines-" .. git_info.linenumber.starts,
   }
-  if (git_info.linenumber.starts ~= git_info.linenumber.ends) then
+  if git_info.linenumber.starts ~= git_info.linenumber.ends then
     url[#url + 1] = ":"
     url[#url + 1] = git_info.linenumber.ends
   end
@@ -168,12 +176,12 @@ end
 
 Utils.generate_github_url = function(git_info)
   local url = {
-    'https://' .. git_info.url,
-    '/blob/' .. git_info.hash,
-    '/' .. git_info.file_path,
-    "#L" .. git_info.linenumber.starts
+    "https://" .. git_info.url,
+    "/blob/" .. git_info.hash,
+    "/" .. git_info.file_path,
+    "#L" .. git_info.linenumber.starts,
   }
-  if (git_info.linenumber.starts ~= git_info.linenumber.ends) then
+  if git_info.linenumber.starts ~= git_info.linenumber.ends then
     url[#url + 1] = "-L"
     url[#url + 1] = git_info.linenumber.ends
   end
