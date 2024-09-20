@@ -33,6 +33,11 @@ local function clean_url(url)
   return url
 end
 
+local function parse_remote_name(url)
+  local name
+  name, _ = url:match("(%w+)(.+)")
+  return name
+end
 local function check_sha_remote()
   local branch_result = vim.system({ "git", "branch", "-r", "--contains", Utils.data.hash },
     { cwd = vim.fn.expand("%:p:h") }):wait()
@@ -72,12 +77,13 @@ local function fetch_url()
   local url
   local remotes = vim.system({ "git", "remote", "-v" }, { cwd = vim.fn.expand("%:p:h") }):wait().stdout
   for s in remotes:gmatch("[^\r\n]+") do
-    if (string.gmatch(s, "[github|bitbucket]")) then
+    if string.gmatch(s, "[github|bitbucket]") then
       url = s
       break
     end
   end
-  if (url) then
+  if url then
+    Utils.data.remote_name = parse_remote_name(url)
     Utils.data.url = clean_url(url)
   else
     error("Remote URL not found.  Is this a git repo?", 0)
@@ -118,9 +124,9 @@ Utils.data = {}
 
 Utils.Steps = {
   { func = fetch_hash,       name = "Fetch Hash" },
+  { func = fetch_url,        name = "Fetch Remote URL" },
   { func = check_commit,     name = "Verify Commits" },
   { func = check_sha_remote, name = "Find Remote Sha" },
-  { func = fetch_url,        name = "Fetch Remote URL" },
   { func = set_repo_type,    name = "Detect Repo Type" },
   { func = fetch_file_info,  name = "Fetch File Info" },
   { func = get_line_number,  name = "Find Line Number" },
